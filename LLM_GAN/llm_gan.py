@@ -344,6 +344,7 @@ def run_llm_gan_train_set(real_news_samples, num_rounds=2):
             fake_news["author"] = real_news["author"]
             fake_news["id"] = real_news["id"]
             fake_news["category"] = fake_news_type
+            fake_news["explanation"] = fake_explanation
             fake_news_samples.append(fake_news)
 
             with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data_test/demo2.json", "w", encoding="utf-8") as f:
