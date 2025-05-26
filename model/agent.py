@@ -1,11 +1,17 @@
 # main.py
 import os
+import requests
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI  
 from langchain_community.utilities import SerpAPIWrapper, GoogleSerperAPIWrapper
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain, SequentialChain
 from langchain.agents import Tool, initialize_agent, AgentType
+from datetime import datetime
+from utils.search_engine import search_online
+import json
+from collections import defaultdict
+from tqdm import tqdm
 
 load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -18,7 +24,7 @@ llm = ChatOpenAI(
     openai_api_key=OPENAI_API_KEY
 )
 # search = SerpAPIWrapper(serpapi_api_key=SERPAPI_API_KEY)
-search = GoogleSerperAPIWrapper()
+# search = GoogleSerperAPIWrapper()
 
 def make_chain(template: str, output_key: str):
     return LLMChain(
@@ -38,32 +44,39 @@ language_prompt = PromptTemplate.from_template(
     "Language 工具 – 找出下列新聞中的拼寫、語法錯誤，或不當 ALL CAPS，並簡要說明：\nNews: {news}"
 )
 commonsense_prompt = PromptTemplate.from_template(
-    "Commonsense 工具 – 根據常識判斷下列新聞是否合理？指出任何與常識衝突之處：\nNews: {news}"
+    "Commonsense 工具 – 文章發布於 {date}，根據常識判斷下列新聞是否合理？指出任何與常識衝突之處：\nNews: {news}"
 )
-standing_prompt = PromptTemplate.from_template(
-    "Standing 工具 – 若此新聞為政治新聞，請分析其是否表達偏頗立場；若非政治新聞回覆 Not Applicable：\nNews: {news}"
+title_content_prompt = PromptTemplate.from_template(
+     "Title 工具 – 判斷下列新聞【標題】與【內容】是否相關一致？指出任何不一致之處：\n標題: {title}\n內容: {news}"
 )
 search_prompt = PromptTemplate.from_template(
-    "Search 工具 – 請根據以下搜尋結果，判斷是否有資訊與新聞相互矛盾，並簡要說明：\n{search_results}"
+    """Search 工具 –  
+新聞摘要：{news}  
+發布日期：{date}  
+
+以下是截至 {date}，針對「{news}」搜尋到的前十筆結果：  
+{search_results}
+
+請逐一比較這些結果，看它們是否**完全支持**原始標題的說法：  
+- 如果大多數（≥3/5）結果支持，請回覆：Match （並簡要說明支持依據）  
+- 如果大多數結果都找不到對應報導或內容明顯不符，請回覆：NoMatch （並簡要說明矛盾點）  
+"""
 )
 final_prompt = PromptTemplate.from_template(
-    """最終 Checklist 判定：
-1. 網域 URL 不可信 → fake
-2. 聳動/誇張語言 → fake
-3. 拼寫/語法錯誤或 ALL CAPS → fake
-4. 與常識衝突或像八卦 → fake
-5. 政治偏頗 → fake
-6. 搜尋結果衝突 → fake
+    """綜合驗證（文章發布於 {date}）：
 
-【工具輸出】
-- URL: {url_result}
-- Phrase: {phrase_result}
-- Language: {language_result}
-- Commonsense: {commonsense_result}
-- Standing: {standing_result}
-- Search: {search_result}
+以下是各工具的檢測結果：
+1. 搜尋結果一致性：{search_result}
+2. 常識合理性檢測：{commonsense_result}
+3. 標題-內容一致性：{title_content_result}
+4. 網域可信度：{url_result}
+5. 煽動性語言檢測：{phrase_result}
+6. 語言錯誤檢測：{language_result}
 
-請返回 'real' 或 'fake'，並說明理由："""
+請模擬人類事實查核流程，重點評估「搜尋結果一致性」與「常識合理性」，並綜合判斷新聞真偽。請以以下格式回覆：
+Label: <real/fake>
+Reason: <簡要說明最關鍵的判斷依據，150 字以內>
+"""
 )
 
 # 5️⃣ 把 Prompt 與 LLM 組成 Runnable
@@ -71,7 +84,7 @@ url_runnable        = url_prompt | llm
 phrase_runnable     = phrase_prompt | llm
 language_runnable   = language_prompt | llm
 commonsense_runnable= commonsense_prompt | llm
-standing_runnable   = standing_prompt | llm
+title_content_runnable = title_content_prompt | llm
 search_runnable     = search_prompt | llm
 final_runnable      = final_prompt | llm
 
@@ -88,26 +101,51 @@ def language_tool(news: str) -> str:
     out = language_runnable.invoke({"news": news})
     return out.content.strip()
 
-def commonsense_tool(news: str) -> str:
-    out = commonsense_runnable.invoke({"news": news})
+def commonsense_tool(news: str, date: str) -> str:
+    out = commonsense_runnable.invoke({"news": news, "date": date})
     return out.content.strip()
 
-def standing_tool(news: str) -> str:
-    out = standing_runnable.invoke({"news": news})
+def title_content_tool(title: str, news: str) -> str:
+    out = title_content_runnable.invoke({"title": title, "news": news})
     return out.content.strip()
 
-def search_tool(news: str) -> str:
-    sr = search.run(news)  # SerpAPIWrapper 回傳 raw string
-    out = search_runnable.invoke({"search_results": sr})
+def search_tool(news: str, date: str) -> str:
+    summarize_query_prompt = PromptTemplate.from_template(
+        "請用一句話（不超過50字）概括下列新聞，以便後續搜尋：\n\n{content}"
+    )
+    summarize_query_chain = LLMChain(llm=llm, prompt=summarize_query_prompt)
+    query = summarize_query_chain.predict(content=news).strip()
+    # print(f"=== 搜尋關鍵字 ===\n{query}\n")
+
+    cutoff = datetime.fromisoformat(date).date()
+    docs = search_online(query, cutoff_date=cutoff, num_results=5)
+
+    summarize_prompt = PromptTemplate.from_template(
+        "請用一句話（不超過50字）概括下列文章內容：\n\n{content}"
+    )
+    summarize_chain = LLMChain(llm=llm, prompt=summarize_prompt)
+    summaries = []
+    for i, text in enumerate(docs, start=1):
+        excerpt = text[:300].replace("\n", " ")
+        summary = summarize_chain.predict(content=excerpt)
+        summaries.append(f"{i}. {summary or '（內容不足或抓取失敗）'}")
+
+    joined = "\n".join(summaries)
+    # print(f"=== 搜尋結果摘要 ===\n{joined}\n")
+    out = search_runnable.invoke({
+        "news":      query,
+        "date":      date,
+        "search_results": joined
+    })
     return out.content.strip()
 
-def fact_agent_pipeline(url: str, news: str) -> str:
+def fact_agent_pipeline(url: str, title: str, news: str, date: str) -> str:
     url_res         = url_tool(url)
     phrase_res      = phrase_tool(news)
     language_res    = language_tool(news)
-    commonsense_res = commonsense_tool(news)
-    standing_res    = standing_tool(news)
-    search_res      = search_tool(news)
+    commonsense_res = commonsense_tool(news, date)
+    title_content_res = title_content_tool(title, news)
+    search_res      = search_tool(news, date)
 
     # 最後跑 Checklist
     final_inputs = {
@@ -115,16 +153,53 @@ def fact_agent_pipeline(url: str, news: str) -> str:
         "phrase_result":      phrase_res,
         "language_result":    language_res,
         "commonsense_result": commonsense_res,
-        "standing_result":    standing_res,
+        "title_content_result": title_content_res,
         "search_result":      search_res,
+        "date":               date,
     }
     final_out = final_runnable.invoke(final_inputs)
     return final_out.content.strip()
 
 # 8️⃣ 執行示例
 if __name__ == "__main__":
-    example_url  = "https://tw.nextapple.com/sports/20250521/0A9E1D720B06E7D9E96FCDCD55DEE943"
-    example_news = "「台灣怪力男」李灝宇奪3A上周MVP　教頭曝他上大聯盟最大優勢"
+    with open('../fake_data_test/output.json') as f:
+        data = json.load(f)
+    print(len(data), "條測試數據")
 
-    verdict = fact_agent_pipeline(example_url, example_news)
-    print("=== 最終判定 ===\n", verdict)
+    logs = []
+    logs_path = "logs.jsonl"
+    if os.path.exists(logs_path):
+        os.remove(logs_path)
+
+    with open(logs_path, "a", encoding="utf-8") as log_f:
+        for d in tqdm(data):
+            rec = {
+                "id":       d.get("id"),
+                "category": d.get("category"),
+                "label":    None,
+                "Reason":  None,
+                "error":    None,
+            }
+            try:
+                verdict = fact_agent_pipeline(
+                    url=d["url"],
+                    title=d["title"],
+                    news=d["content"],
+                    date=d["date"]
+                )
+                for line in verdict.splitlines():
+                    line = line.strip()
+                    if line.startswith("Label:"):
+                        rec["label"] = line.split("Label:",1)[1].strip()
+                    elif line.startswith("Reason:"):
+                        rec["Reason"] = line.split("Reason:",1)[1].strip()
+                if rec["label"] is None:
+                    rec["label"] = "Unknown"
+                if rec["Reason"] is None:
+                    rec["Reason"] = ""
+            except Exception as e:
+                rec["error"] = str(e)
+
+            log_f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+            log_f.flush()
+    
