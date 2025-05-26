@@ -187,9 +187,99 @@ def run_llm_gan(real_news_samples, num_rounds=2):
     
     fake_news_samples = []
 
-    fake_news_category = fake_news_types.keys()
+    fake_news_category = list(fake_news_types.keys())
+
+    category_index = 0
+    count = 0
+    while category_index != len(fake_news_category):
+        fake_news_type = fake_news_category[category_index]
+        real_news = real_news_samples[count]
+        count += 1
+        if count % 40 == 0:
+            category_index += 1
+    
+        fake_strategy = ""
+        detect_strategy = ""
+        for round in range(num_rounds):
+            logger.info(f"\n=== Round {round + 1} ===")
+
+            # 1. Generator creates fake news
+            gen_output = call_gpt(generator_prompt(real_news, fake_news_type, fake_strategy))
+            fake_news, fake_explanation = extract_news_and_explanation(gen_output)
+            fake_news = extract_news(fake_news)
+            logger.info(f"Generated Fake News: {fake_news}\nExplanation: {fake_explanation}")
+
+
+            if fake_explanation == "":
+                print("fake_explanation格式出現錯誤")
+                input()
+
+            # 2. Detector attempts classification
+            det_output = call_gpt(detector_prompt(fake_news, detect_strategy))
+            predicted_label, det_explanation = extract_label_and_explanation(det_output)
+
+            if predicted_label == "":
+                predicted_label = det_output.split('\n')[0].strip()
+            
+            if det_explanation == "":
+                det_explanation = det_output.split('\n')[1].strip()
+
+            if predicted_label == "":
+                print("predicted_label格式出現錯誤")
+                input() 
+            
+            if det_explanation == "":
+                print("predicted_label格式出現錯誤")
+                input()
+
+            logger.info(f"Prediction: {predicted_label}\nExplanation: {det_explanation}")
+
+            # Assume the ground truth is "Fake" for all generated news
+            correct = predicted_label.lower() == "fake"
+
+            # 3. Update strategy based on success
+            if correct:
+                logger.info("Detector succeeded. Updating Generator strategy...")
+                strat_prompt = strategy_update_prompt(True, fake_news, det_explanation, role="Generator", previous_strategy = fake_strategy, fake_news_type = fake_news_type)
+                fake_strategy = extract_strategy(call_gpt(strat_prompt))
+                if fake_strategy == "":
+                    print(f"fake_strategy格式錯誤")
+                    input()
+            else:
+                logger.info("Detector failed. Updating Detector strategy...")
+                strat_prompt = strategy_update_prompt(False, fake_news, fake_explanation, role="Detector")
+                detect_strategy = extract_strategy(call_gpt(strat_prompt))
+                if detect_strategy == "":
+                    print(f"detect_strategy格式錯誤")
+                    input()
+
+            logger.info(f"Updated Fake Strategy: {fake_strategy}")
+            logger.info(f"Updated Detect Strategy: {detect_strategy}")
+
+        fake_news["url"] = real_news["url"]
+        fake_news["date"] = real_news["date"]
+        fake_news["author"] = real_news["author"]
+        fake_news["id"] = real_news["id"]
+        fake_news["category"] = fake_news_type
+        fake_news_samples.append(fake_news)
+
+        with open("../fake_data/test/generated_news.json", "w", encoding="utf-8") as f:
+            json.dump(fake_news_samples, f, ensure_ascii=False, indent=4)
+
+    logger.info("Training complete.")
+
+def run_llm_gan_train_set(real_news_samples, num_rounds=2):
+    
+    fake_news_samples = []
+
+    fake_news_category = list(fake_news_types.keys())
+
+    fake_news_category = ["misleading"]
 
     for fake_news_type in fake_news_category:
+        if not os.path.exists(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}"):
+            os.makedirs(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}")
+
         for real_news in tqdm(real_news_samples):
             fake_strategy = ""
             detect_strategy = ""
@@ -256,7 +346,7 @@ def run_llm_gan(real_news_samples, num_rounds=2):
             fake_news["category"] = fake_news_type
             fake_news_samples.append(fake_news)
 
-    with open("fake_data_test/output.json", "w", encoding="utf-8") as f:
-        json.dump(fake_news_samples, f, ensure_ascii=False, indent=4)
+            with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data_test/demo2.json", "w", encoding="utf-8") as f:
+                json.dump(fake_news_samples, f, ensure_ascii=False, indent=4)
 
     logger.info("Training complete.")
