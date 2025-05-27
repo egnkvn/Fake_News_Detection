@@ -191,6 +191,8 @@ def run_llm_gan(real_news_samples, num_rounds=2):
 
     category_index = 0
     count = 0
+    detect_strategy = ""
+
     while category_index != len(fake_news_category):
         fake_news_type = fake_news_category[category_index]
         real_news = real_news_samples[count]
@@ -199,7 +201,7 @@ def run_llm_gan(real_news_samples, num_rounds=2):
             category_index += 1
     
         fake_strategy = ""
-        detect_strategy = ""
+        # detect_strategy = ""
         for round in range(num_rounds):
             logger.info(f"\n=== Round {round + 1} ===")
 
@@ -253,6 +255,7 @@ def run_llm_gan(real_news_samples, num_rounds=2):
                     print(f"detect_strategy格式錯誤")
                     input()
 
+
             logger.info(f"Updated Fake Strategy: {fake_strategy}")
             logger.info(f"Updated Detect Strategy: {detect_strategy}")
 
@@ -266,23 +269,38 @@ def run_llm_gan(real_news_samples, num_rounds=2):
         with open("../fake_data/test/generated_news.json", "w", encoding="utf-8") as f:
             json.dump(fake_news_samples, f, ensure_ascii=False, indent=4)
 
+        with open(f"../fake_data/test/detect_strategy.txt", "w") as f:
+            print(detect_strategy, file=f)
+
     logger.info("Training complete.")
 
 def run_llm_gan_train_set(real_news_samples, num_rounds=2):
     
     fake_news_samples = []
 
-    fake_news_category = list(fake_news_types.keys())
+    # fake_news_category = list(fake_news_types.keys())
 
-    fake_news_category = ["misleading"]
+    fake_news_category = ['fabricated', 'false_connection', 'misleading', 'impostor', 'manipulated']
 
     for fake_news_type in fake_news_category:
         if not os.path.exists(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}"):
             os.makedirs(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}")
+            fake_news_samples = []
+            exist_ids = set()
+        else:
+            with open(f'/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}/generated_news.json', 'r', encoding='utf-8') as f:
+                fake_news_samples = json.load(f)
+
+            exist_ids = set([ fake_news_sample['id'] for fake_news_sample in fake_news_samples])
+
+        detect_strategy = ""
 
         for real_news in tqdm(real_news_samples):
+            if real_news['id'] in exist_ids:
+                continue
+
             fake_strategy = ""
-            detect_strategy = ""
+            # detect_strategy = ""
             for round in range(num_rounds):
                 logger.info(f"\n=== Round {round + 1} ===")
 
@@ -344,10 +362,13 @@ def run_llm_gan_train_set(real_news_samples, num_rounds=2):
             fake_news["author"] = real_news["author"]
             fake_news["id"] = real_news["id"]
             fake_news["category"] = fake_news_type
-            fake_news["explanation"] = fake_explanation
+            # fake_news["explanation"] = fake_explanation
             fake_news_samples.append(fake_news)
 
-            with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data_test/demo2.json", "w", encoding="utf-8") as f:
+            with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}/generated_news.json", "w", encoding="utf-8") as f:
                 json.dump(fake_news_samples, f, ensure_ascii=False, indent=4)
+
+            with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}/detect_strategy.txt", "w") as f:
+                print(detect_strategy, file=f)
 
     logger.info("Training complete.")
