@@ -6,9 +6,9 @@ from openai import OpenAI
 import os
 import json
 import re
+from dotenv import load_dotenv
+load_dotenv()
 # Set the environment variable
-os.environ["OPENAI_API_KEY"] = ""
-
 client = OpenAI()
 
 fake_news_types = {
@@ -66,28 +66,55 @@ def extract_news(text):
         print("fake news格式不正確")
         input()
 
+def extract_title(title, real_news):
+    match = re.match(r"標題：(.*)", title)
+    if match:
+        title = match.group(1).strip()
+
+        content = real_news['content']
+        result = {"title": title, "content": content}
+
+        return result
+    else:
+        print("fake news格式不正確")
+        input()
 # ─── Prompt Templates ──────────────────────────────────────────────────────────
 def generator_prompt(real_news: object, fake_news_type: str, fake_strategy: str = None) -> str:
     t = fake_news_types[fake_news_type]
-    return f"""你是一位假新聞生成器。
-根據以下真實新聞，創造一則看似合理但實際為虛假的新聞版本。
+#     return f"""你是一位假新聞生成器。
+# 根據以下真實新聞，創造一則看似合理但實際為虛假的新聞版本。
 
-本次的造假類型為：{t['name']}
-- 定義：{t['definition']}
-- 重點：{t['note']}
+# 本次的造假類型為：{t['name']}
+# - 定義：{t['definition']}
+# - 重點：{t['note']}
+
+# 真實新聞：
+# 標題：{real_news['title']}
+# 內容：{real_news['content']}
+
+# 造假策略：{fake_strategy or "請加入與該類型對應的誤導技巧，例如幽默、斷章取義、捏造細節等"}
+
+# 請以以下格式回覆：
+# <fake_news>
+# 標題：...
+# 內容：...
+# </fake_news>
+# <explanation>...（解釋你如何根據{t['name']}的特性進行造假）...</explanation>"""
+
+    return f"""你是一位假標題產生器。
+根據以下的真實新聞，為這篇新聞的內容，創造一則看似合理但實際跟內文無關的標題。
 
 真實新聞：
 標題：{real_news['title']}
 內容：{real_news['content']}
 
-造假策略：{fake_strategy or "請加入與該類型對應的誤導技巧，例如幽默、斷章取義、捏造細節等"}
+# 造假策略：{fake_strategy or ""}
 
 請以以下格式回覆：
-<fake_news>
+<fake_title>
 標題：...
-內容：...
-</fake_news>
-<explanation>...（解釋你如何根據{t['name']}的特性進行造假）...</explanation>"""
+</fake_title>
+<explanation>...（解釋你是如何產生的）...</explanation>"""
 
 def detector_prompt(news: object, detect_strategy: str = None) -> str:
     return f"""你是一位假新聞偵測器。
@@ -102,12 +129,29 @@ def detector_prompt(news: object, detect_strategy: str = None) -> str:
 def strategy_update_prompt(success: bool, news: object, explanation: str, role: str, previous_strategy = None, fake_news_type = None) -> str:
     if success and role == "Generator":
         t = fake_news_types[fake_news_type]
-        return f"""你是一位假新聞策略設計師。
-    偵測器已經識別出這則是假新聞。
+    #     return f"""你是一位假新聞策略設計師。
+    # 偵測器已經識別出這則是假新聞。
 
-    本次的假新聞類型為：{t['name']}
-    - 定義：{t['definition']}
-    - 重點：{t['note']}
+    # 本次的假新聞類型為：{t['name']}
+    # - 定義：{t['definition']}
+    # - 重點：{t['note']}
+
+    # 新聞資訊：
+    # 標題：{news['title']}
+    # 內容：{news['content']}
+
+    # 偵測器的說明：{explanation}
+
+    # 你在上一次使用的策略如下：
+    # <previous_strategy>{previous_strategy}</previous_strategy>
+
+    # 請根據偵測器的說明與新聞類型，**修改上述策略**，讓它更難被識破，但仍保有原來該類型的特性）。
+
+    # 請以以下格式回覆：
+    # <strategy>...（你的更新後造假策略）...</strategy>"""
+
+        return f"""你是一位假標題策略設計師。
+    偵測器已經識別出這則是新聞屬於假標題。
 
     新聞資訊：
     標題：{news['title']}
@@ -118,7 +162,7 @@ def strategy_update_prompt(success: bool, news: object, explanation: str, role: 
     你在上一次使用的策略如下：
     <previous_strategy>{previous_strategy}</previous_strategy>
 
-    請根據偵測器的說明與新聞類型，**修改上述策略**，讓它更難被識破，但仍保有原來該類型的特性）。
+    請根據偵測器的說明與新聞類型，**修改上述策略**，讓它更難被識破。
 
     請以以下格式回覆：
     <strategy>...（你的更新後造假策略）...</strategy>"""
@@ -176,6 +220,9 @@ def extract_between_tags(text: str, tag: str) -> str:
 def extract_news_and_explanation(output: str) -> Tuple[str, str]:
     return extract_between_tags(output, "fake_news"), extract_between_tags(output, "explanation")
 
+def extract_title_and_explanation(output: str) -> Tuple[str, str]:
+    return extract_between_tags(output, "fake_title"), extract_between_tags(output, "explanation")
+
 def extract_label_and_explanation(output: str) -> Tuple[str, str]:
     return extract_between_tags(output, "label"), extract_between_tags(output, "explanation")
 
@@ -187,7 +234,9 @@ def run_llm_gan(real_news_samples, num_rounds=2):
     
     fake_news_samples = []
 
-    fake_news_category = list(fake_news_types.keys())
+    # fake_news_category = list(fake_news_types.keys())
+
+    fake_news_category = ['false_connection']
 
     category_index = 0
     count = 0
@@ -207,8 +256,14 @@ def run_llm_gan(real_news_samples, num_rounds=2):
 
             # 1. Generator creates fake news
             gen_output = call_gpt(generator_prompt(real_news, fake_news_type, fake_strategy))
-            fake_news, fake_explanation = extract_news_and_explanation(gen_output)
-            fake_news = extract_news(fake_news)
+
+            # fake_news, fake_explanation = extract_news_and_explanation(gen_output)
+            # fake_news = extract_news(fake_news)
+        
+            fake_title, fake_explanation = extract_title_and_explanation(gen_output)
+            
+            fake_news = extract_title(fake_title, real_news)
+
             logger.info(f"Generated Fake News: {fake_news}\nExplanation: {fake_explanation}")
 
 
@@ -281,21 +336,23 @@ def run_llm_gan_train_set(real_news_samples, num_rounds=2):
     # fake_news_category = list(fake_news_types.keys())
 
     # fake_news_category = ['fabricated', 'false_connection', 'misleading', 'impostor', 'manipulated']
-    fake_news_category = ['impostor', 'manipulated']
-    
+    fake_news_category = ['false_connection']
+
     for fake_news_type in fake_news_category:
-        if not os.path.exists(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}"):
-            os.makedirs(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}")
+        # store_dir = f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}"
+        store_dir = f"/data2/jerome/web_mining/final/Fake_News_Detection/test"
+        if not os.path.exists(store_dir):
+            os.makedirs(store_dir)
             fake_news_samples = []
             exist_ids = set()
         else:
-            with open(f'/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}/generated_news.json', 'r', encoding='utf-8') as f:
+            with open(f'{store_dir}/generated_news_2.json', 'r', encoding='utf-8') as f:
                 fake_news_samples = json.load(f)
 
             exist_ids = set([ fake_news_sample['id'] for fake_news_sample in fake_news_samples])
 
         detect_strategy = ""
-
+        # fake_strategy = ""
         for real_news in tqdm(real_news_samples):
             if real_news['id'] in exist_ids:
                 continue
@@ -307,8 +364,13 @@ def run_llm_gan_train_set(real_news_samples, num_rounds=2):
 
                 # 1. Generator creates fake news
                 gen_output = call_gpt(generator_prompt(real_news, fake_news_type, fake_strategy))
-                fake_news, fake_explanation = extract_news_and_explanation(gen_output)
-                fake_news = extract_news(fake_news)
+
+                # fake_news, fake_explanation = extract_news_and_explanation(gen_output)
+                fake_title, fake_explanation = extract_title_and_explanation(gen_output)
+
+                fake_news = extract_title(fake_title, real_news)
+
+                # fake_news = extract_news(fake_news)
                 logger.info(f"Generated Fake News: {fake_news}\nExplanation: {fake_explanation}")
 
 
@@ -366,10 +428,10 @@ def run_llm_gan_train_set(real_news_samples, num_rounds=2):
             # fake_news["explanation"] = fake_explanation
             fake_news_samples.append(fake_news)
 
-            with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}/generated_news.json", "w", encoding="utf-8") as f:
+            with open(f"{store_dir}/generated_news.json", "w", encoding="utf-8") as f:
                 json.dump(fake_news_samples, f, ensure_ascii=False, indent=4)
 
-            with open(f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}/detect_strategy.txt", "w") as f:
+            with open(f"{store_dir}/detect_strategy.txt", "w") as f:
                 print(detect_strategy, file=f)
 
     logger.info("Training complete.")

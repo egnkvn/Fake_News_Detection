@@ -21,7 +21,7 @@ fake_news_examples = {
     "manipulated": []
 }
 
-with open('/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/impostor/generated_news.json', 'r', encoding='utf-8') as f:
+with open('/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/test/generated_news_2.json', 'r', encoding='utf-8') as f:
     examples = json.load(f)
 
 for example in examples:
