@@ -6,7 +6,7 @@ fake_news_types = {
     "false_context": 0,
     "fabricated": 0,
     "false_connection":0,
-    "misleading":0,
+    "misleading&manipulated":0,
     "impostor":0,
     "manipulated":0
 }
@@ -16,12 +16,12 @@ fake_news_examples = {
     "false_context": [],
     "fabricated": [],
     "false_connection": [],
-    "misleading": [],
+    "misleading&manipulated": [],
     "impostor": [],
     "manipulated": []
 }
 
-with open('/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/test/generated_news_2.json', 'r', encoding='utf-8') as f:
+with open('/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/test/generated_news.json', 'r', encoding='utf-8') as f:
     examples = json.load(f)
 
 for example in examples:

@@ -2,7 +2,7 @@ from llm_gan import run_llm_gan_train_set, run_llm_gan
 import json
 import random
 
-with open('../fake_data/train/fake_news.json', 'r', encoding='utf-8') as f:
+with open('../fake_data/test/fake_news.json', 'r', encoding='utf-8') as f:
     real_news_examples = json.load(f)
 
 # with open('../old/test/generated_news.json', 'r', encoding='utf-8') as f:

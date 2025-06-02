@@ -333,7 +333,7 @@ def run_llm_gan_train_set(real_news_samples, num_rounds=2):
     fake_news_category = ['fabricated']
 
     for fake_news_type in fake_news_category:
-        store_dir = f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/train/{fake_news_type}"
+        store_dir = f"/data2/jerome/web_mining/final/Fake_News_Detection/fake_data/test"
         # store_dir = f"/data2/jerome/web_mining/final/Fake_News_Detection/test/{fake_news_type}"
         if not os.path.exists(store_dir):
             os.makedirs(store_dir)
