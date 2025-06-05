@@ -75,7 +75,7 @@ class SimpleBERTClassifier(nn.Module):
     def forward(self, input_ids, attention_mask):
         # 直接傳給 BertModel，使用 pooler_output（[CLS] token 的隱藏向量）
         outputs = self.bert(input_ids=input_ids, attention_mask=attention_mask)
-        pooled = outputs.pooler_output  # [B, hidden_size]
+        pooled = outputs.pooler_output  # [CLS]
         logits = self.classifier(self.dropout(pooled))  # [B, num_labels]
         return logits
 
@@ -230,11 +230,15 @@ if __name__ == "__main__":
     correct = 0
     total = 0
 
+    from collections import defaultdict
+    category_correct = defaultdict(int)
+    category_total   = defaultdict(int)
     with torch.no_grad():
         for batch in tqdm(test_loader, desc="Testing", leave=False):
             input_ids = batch["input_ids"].to(device)           # [B, max_len]
             attention_mask = batch["attention_mask"].to(device) # [B, max_len]
             labels = batch["labels"].to(device)                 # [B]
+            categories = batch["categories"]  # [B]
 
             # 混合精度推理
             with autocast():
@@ -242,10 +246,25 @@ if __name__ == "__main__":
 
             preds = torch.argmax(logits, dim=1)  # [B]
 
-            # 累加正確預測與總樣本數
             correct += (preds == labels).sum().item()
-            total += labels.size(0)
+            total   += labels.size(0)
 
-    # 計算並印出 Accuracy
+            for i in range(labels.size(0)):
+                cat = categories[i]  # 可能是字串或 None
+                if cat is None:
+                    continue
+
+                category_total[cat] += 1
+                if preds[i] == labels[i]:
+                    category_correct[cat] += 1
+
+    # 計算整體 accuracy
     accuracy = correct / total if total > 0 else 0.0
-    print(f"Test Accuracy: {accuracy:.4f} ({correct}/{total})")
+    print(f"Overall Test Accuracy: {accuracy:.4f} ({correct}/{total})\n")
+
+    # 計算並列印每個 category 的 accuracy
+    print("=== 各 category 測試準確度 ===")
+    for cat, tot in category_total.items():
+        corr = category_correct[cat]
+        acc_cat = corr / tot if tot > 0 else 0.0
+        print(f"Category: {cat:20s}  |  Accuracy: {acc_cat:.4f} ({corr}/{tot})")
