@@ -169,14 +169,10 @@ if __name__ == "__main__":
     print(len(data), "條測試數據")
 
     logs = []
-    logs_path = "log/logs_null_real.jsonl"
-
-    keep_indices = {'0fc22d82-68de-4f73-a43f-b2d3dcbc1965', '03894b7f-cefa-462e-9d2f-876095c867d3', 'c690311e-6d30-413a-932f-cd14327129dd'}
+    logs_path = "log/logs.jsonl"
 
     with open(logs_path, "a", encoding="utf-8") as log_f:
         for d in tqdm(data, desc="Processing"):
-            if d.get("id") not in keep_indices:
-                continue
             rec = {
                 "id":       d.get("id"),
                 "category": d.get("category"),

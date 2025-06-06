@@ -220,7 +220,7 @@ if __name__ == "__main__":
 
     # 訓練
     trainer = Trainer(model, optimizer, criterion, device, save_path="./bert_model_our.pt")
-    # trainer.train(epochs=1, train_loader=train_loader, valid_loader=val_loader)
+    trainer.train(epochs=1, train_loader=train_loader, valid_loader=val_loader)
 
     # 使用最佳模型做測試
     model.load_state_dict(torch.load("bert_model_our.pt", map_location=device))
