@@ -10,6 +10,27 @@
 
 ## How to run code
 Create an .env file and Paste your OpenAI key in that file.
+
+### Web Scraping
+Install the `scrapy` package with the command
+```
+pip install scrapy
+```
+
+Change directory to `web_scarping/`
+```
+cd web_scraping
+```
+
+If you want to scrape news about China, change the directory by
+```
+cd ./bbc_china_news
+```
+Then you can run the code with the desired output file path
+```
+scrapy crawl bbc_china -o chian_bbc_news.json
+```
+
 ### Dataset
 In LLM GAN directory and run the following command
 
