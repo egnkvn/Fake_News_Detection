@@ -2,9 +2,9 @@ from llm_gan import run_llm_gan_train_set, run_llm_gan
 import json
 import random
 
-with open('../new_data/international_bbc_news.json', 'r', encoding='utf-8') as f:
+with open('../raw_data/international_bbc_news.json', 'r', encoding='utf-8') as f:
     real_news_examples_1 = json.load(f)
-with open('../new_data/taiwan_bbc_news.json', 'r', encoding='utf-8') as f:
+with open('../raw_data/taiwan_bbc_news.json', 'r', encoding='utf-8') as f:
     real_news_examples_2 = json.load(f)
 
 store_pos = ""
