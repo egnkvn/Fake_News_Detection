@@ -73,7 +73,7 @@ final_prompt = PromptTemplate.from_template(
 5. 煽動性語言檢測：{phrase_result}
 6. 語言錯誤檢測：{language_result}
 
-請模擬人類事實查核流程，重點評估「搜尋結果一致性」與「常識合理性」，並綜合判斷新聞真偽。請以以下格式回覆：
+請模擬人類事實查核流程，重點評估「搜尋結果一致性」與「常識合理性」。再來，若標題-內容不一致，則判斷為fake。綜合判斷新聞真偽。請以以下格式回覆。：
 Label: <real/fake>
 Reason: <簡要說明最關鍵的判斷依據，150 字以內>
 """
@@ -116,8 +116,10 @@ def search_tool(news: str, date: str) -> str:
     summarize_query_chain = LLMChain(llm=llm, prompt=summarize_query_prompt)
     query = summarize_query_chain.predict(content=news).strip()
     # print(f"=== 搜尋關鍵字 ===\n{query}\n")
-
-    cutoff = datetime.fromisoformat(date).date()
+    try:
+        cutoff = datetime.fromisoformat(date).date()
+    except ValueError:
+        cutoff = datetime.now().date()
     docs = search_online(query, cutoff_date=cutoff, num_results=5)
 
     summarize_prompt = PromptTemplate.from_template(
@@ -162,17 +164,19 @@ def fact_agent_pipeline(url: str, title: str, news: str, date: str) -> str:
 
 # 8️⃣ 執行示例
 if __name__ == "__main__":
-    with open('../fake_data_test/output.json') as f:
+    with open('../fake_data/test/real_news.json') as f:
         data = json.load(f)
     print(len(data), "條測試數據")
 
     logs = []
-    logs_path = "logs.jsonl"
-    if os.path.exists(logs_path):
-        os.remove(logs_path)
+    logs_path = "log/logs_null_real.jsonl"
+
+    keep_indices = {'0fc22d82-68de-4f73-a43f-b2d3dcbc1965', '03894b7f-cefa-462e-9d2f-876095c867d3', 'c690311e-6d30-413a-932f-cd14327129dd'}
 
     with open(logs_path, "a", encoding="utf-8") as log_f:
-        for d in tqdm(data):
+        for d in tqdm(data, desc="Processing"):
+            if d.get("id") not in keep_indices:
+                continue
             rec = {
                 "id":       d.get("id"),
                 "category": d.get("category"),
